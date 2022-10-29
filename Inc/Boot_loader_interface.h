@@ -6,9 +6,9 @@
  *
  * Notes:
  * This software is targeted for STM32f103, it uses UART2 peripheral at a
- * baudrate of 115200 Bit per second, and its interrupt, user should be aware
- * that they can not use/modify any of the peripheral's configurations, or
- * disable its interrupt, or give it a low priority.
+ * baudrate configurable in ".config" file Bit per second, user should be 
+ * aware that they can not use/modify any of the peripheral's
+ * configurations.
  */
 
 #ifndef _BOOT_LOADER_INTERFACE_H_
