@@ -6,7 +6,7 @@
  *
  * Notes:
  * This software is targeted for STM32f103, it uses UART2 peripheral at a
- * baudrate configurable in ".config" file Bit per second, user should be 
+ * baudrate configurable in ".config" file Bit per second, user should be
  * aware that they can not use/modify any of the peripheral's
  * configurations.
  */
@@ -19,22 +19,34 @@
  * inits system clock to HSI, not disabling or configuring any of RCC's related
  * clock selection configurations, to avoid conflicting user's - to come - SW.
  *
- * inits UART2 with the baudrate configured in the ".config" file.
+ * inits SysTick.
+ *
+ * inits esp8266 WiFi module.
  */
 void Boot_Loader_voidInit(void);
 
 /*
- * disables sysTick, enables FPEC, erases all pages following the
- * boot-loader section, receives, checks and parses data into flash memory.
- * returns starting execution address.
+ * Connects to the configured FTP server.
  */
-u32 Boot_Loader_u32EnterProgrammingMode(void);
+b8 Boot_Loader_b8ConnectToFtpServer(void);
+
+/*
+ * Checks if update is available on server.
+ */
+b8 Boot_Loader_b8IsOnlineUpdateAvailable(void);
+
+/*
+ * Enables FPEC, erases all pages following the boot-loader section, downloads,
+ * checks and parses data into flash memory.
+ */
+void Boot_Loader_voidEnterProgrammingMode(void);
+
+/*
+ * Updated version number stored in flash to the one just downloaded and flashed.
+ */
+void Boot_Loader_voidUpdateVersionNumberOnFlash(void);
 
 u32 Boot_Loader_u32GetStoredStartingExecutionAddress(void);
 
-/*
- * gives host flasher time to enter programming key, disables sysTick on exit.
- */
-b8 Boot_Loader_b8GiveChanceToUnlock(u16 msTimeout);
 
 #endif /* _BOOT_LOADER_INTERFACE_H_ */

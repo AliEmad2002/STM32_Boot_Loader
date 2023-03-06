@@ -10,6 +10,7 @@
 #include "Bit_Math.h"
 
 /*	MCAL	*/
+#include "RCC_interface.h"
 #include "BKP_interface.h"
 #include "SCB_interface.h"
 #include "GPIO_interface.h"
@@ -26,30 +27,38 @@ int main(void)
 	/*	init boot loader	*/
 	Boot_Loader_voidInit();
 
-	/*	send start of connection ack to the flasher	*/
-	UART_enumSendByte(UART_UnitNumber_2, 'S');
+	/*	try connecting to update FTP server	*/
+	b8 updateServerConnected = Boot_Loader_b8ConnectToFtpServer();
 
-	/*	wait for key sequence, timeout = 100ms	*/
-	if (Boot_Loader_b8GiveChanceToUnlock(100))
+	/*	if successfully connected, check for update	*/
+	if (updateServerConnected)
 	{
-		/*	flash new program	*/
-		(void)Boot_Loader_u32EnterProgrammingMode();
+		b8 updateAvailable = Boot_Loader_b8IsOnlineUpdateAvailable();
+
+		/*	if there's an update	*/
+		if (updateAvailable)
+		{
+			/*	download and flash it	*/
+			Boot_Loader_voidEnterProgrammingMode();
+
+			/*
+			 * after successful update of the program, update version number
+			 * stored.
+			 */
+			Boot_Loader_voidUpdateVersionNumberOnFlash();
+		}
 	}
 
 	/*
-	 * Give SCB the new address of the vector table.
-	 * Why? here's an example:
-	 * User uses the vector of address 0x5 + Flash start address defined in
-	 * his linker script. As this definition is not the default one, vector
-	 * table hence is not in its default place.
-	 * Hence, it is shifted it here to avoid user mistake and reduce overhead
-	 * of every time programming.
+	 * let SCB know that vector table in flash is now shifted by size of the
+	 * bootloader program.
 	 */
-	MSCB_voidWriteVectorTableOffset(
-		0x08000000 + 1024 * BOOT_LOADER_SIZE_IN_KB, MSCB_VTOR_Code);
+	SCB_voidWriteVectorTableOffset(
+		0x08000000 + 1024 * BOOT_LOADER_SIZE_IN_KB, SCB_VTOR_Code);
 
-	/*	start user's code	*/
+	/*	start APP code	*/
 	vvFunc_t start = *(vvFunc_t*)(0x08000004 + 1024 * BOOT_LOADER_SIZE_IN_KB);
+	//vvFunc_t start = *(vvFunc_t*)Boot_Loader_u32GetStoredStartingExecutionAddress();
 
 	start();
 

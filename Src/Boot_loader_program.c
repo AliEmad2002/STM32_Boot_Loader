@@ -20,53 +20,109 @@
 #include "FPEC_interface.h"
 #include "STK_interface.h"
 
+/*	HAL	*/
+#include "WiFi_interface.h"
+
 /*	SELF	*/
 #include "Boot_loader_interface.h"
 #include "Boot_Loader_config.h"
 #include "Boot_Loader_private.h"
 
+WiFi_t esp8266;
+
 /*
- * inits system clock to HSI, not disabling or configuring any of RCC's related
- * clock selection configurations, to avoid conflicting user's - to come - SW.
- *
- * inits UART2 with the baudrate configured in the ".config" file.
+ * After getting new version number from server, it can't be immediately stored
+ * in flash in location of "current version on flash" (because it is not yet,
+ * and by doing that, MCU would believe it is updated even if the update failed!).
+ * Instead, it is stored temporarily in RAM, and if update succeeds, it is flashed.
  */
+u16 Global_tempOnlineVersionNumber;
+
 void Boot_Loader_voidInit(void)
 {
-	/*	will not change RCC clock default settings	*/
+	/*
+	 * Remember to configure RCC on HSI, to give APP code freedom of configuring
+	 * RCC later.
+	 */
+	RCC_voidSysClockInit();
 
-	/*	enable AFIO, GPIOA, UART2, BKP, PWR	*/
-	RCC_voidEnablePeripheralClk(RCC_Bus_APB2, RCC_PERIPHERAL_IOPA);
-	RCC_voidEnablePeripheralClk(RCC_Bus_APB2, RCC_PERIPHERAL_AFIO);
-	RCC_voidEnablePeripheralClk(RCC_Bus_APB1, RCC_PERIPHERAL_USART2);
+	/*	power stabilization delay	*/
+	Delay_voidBlockingDelayMs(1000);
 
-	/*	init UART corresponding pins as AF pins	*/
-	GPIO_voidSetPinMode(		GPIO_PortName_A, 2, GPIO_Mode_AF_PushPull);
-	GPIO_voidSetPinOutputSpeed(	GPIO_PortName_A, 2, GPIO_OutputSpeed_50MHz);
-	GPIO_voidSetPinMode(		GPIO_PortName_A, 3, GPIO_Mode_AF_PushPull);
-	GPIO_voidSetPinOutputSpeed(	GPIO_PortName_A, 3, GPIO_OutputSpeed_Null);
-	AFIO_voidRemap(AFIO_Peripheral_USART2, AFIO_Usart2_Map_TxA2_RxA3);
-
-	/*	init UART unit	*/
-	UART_voidFastInit(UART_UnitNumber_2, BAUD_RATE);
-
-	/*	enable STK in tick measure mode	*/
-	STK_voidInit(STK_ClockSource_AHB_by8, 0);
-	STK_voidEnableSysTick();
-	STK_voidStartTickMeasure(STK_TickMeasureType_OverflowCount);
-}
-
-/*
- * enables FPEC, erases all pages following the
- * boot-loader section, receives, checks and parses data into flash memory.
- * then disables FPEC, UART, GPIOA, and AFIO
- * returns starting execution address.
- */
-u32 Boot_Loader_u32EnterProgrammingMode(void)
-{
 	/*	enable FPEC	*/
 	RCC_voidEnablePeripheralClk(RCC_Bus_AHB, RCC_PERIPHERAL_FLITF);
 
+	/*	enable STK in tick measure mode	*/
+	STK_voidInit();
+	STK_voidEnableSysTick();
+	STK_voidStartTickMeasure(STK_TickMeasureType_OverflowCount);
+
+	/*	init WiFi module	*/
+	WiFi_voidInit(
+		&esp8266, ESP8266_RST_PIN, ESP8266_UART_UNIT_NUMBER,
+		115200, ESP8266_UART_AFIO_MAP);
+}
+
+b8 Boot_Loader_b8ConnectToFtpServer(void)
+{
+	/*	wait for module to be ready	*/
+	while(!WiFi_b8IsModuleAvailable(&esp8266));
+
+	Delay_voidBlockingDelayMs(2);	//	Avoiding "non-valid echo" problem.
+
+	/*	reset module	*/
+	while(!WiFi_b8SoftReset(&esp8266));
+
+	Delay_voidBlockingDelayMs(500);	//	Avoiding "non-valid echo" problem.
+
+	/*	connect to WiFi network	*/
+	while(!WiFi_b8SelectMode(&esp8266, WiFi_Mode_SoftAP_Station, true));
+
+	Delay_voidBlockingDelayMs(2);	//	Avoiding "non-valid echo" problem.
+
+	while(!WiFi_b8ConnectToAP(&esp8266, WIFI_SSID, WIFI_PASS, true));
+
+	Delay_voidBlockingDelayMs(100);	//	Avoiding "non-valid echo" problem.
+
+	/*	enable multiple connections	*/
+	while(!WiFi_b8SetMultipleConnections(&esp8266, true));
+
+	Delay_voidBlockingDelayMs(2);
+
+	volatile b8 commandSuccess;
+
+	/*	connect to FTP server	*/
+	commandSuccess =
+		WiFi_b8ConnectToFTP(&esp8266, FTP_IP, FTP_PORT, FTP_USER, FTP_PASS, 0);
+
+	if (!commandSuccess)
+		return false;
+
+	else
+		return true;
+}
+
+b8 Boot_Loader_b8IsOnlineUpdateAvailable(void)
+{
+	/**
+	 * get number of current version available on server.
+	 * (stored in "Global_tempOnlineVersionNumber").
+	 **/
+	if(!Boot_Loader_b8GetVersionAvailableOnline())
+	{
+		/*	failed to get version from server	*/
+		return false;
+	}
+
+	/**	get number of current version on flash memory	**/
+	u16 onFlashVersion = Boot_Loader_u16GetVersionAvailableOnFlash();
+
+	/**	compare	**/
+	return (Global_tempOnlineVersionNumber > onFlashVersion);
+}
+
+void Boot_Loader_voidEnterProgrammingMode(void)
+{
 	/*	unlock FPEC	*/
 	FPEC_voidUnlock();
 
@@ -82,71 +138,61 @@ u32 Boot_Loader_u32EnterProgrammingMode(void)
 	/*	enable programming mode	*/
 	FPEC_voidEnableProgrammingMode();
 
-	char str[MAX_STR_LEN];
-	Hex_Record_t record;
-	u32 startingExecutionAddress = 0x08000000;
-	u32 highPartAddress = 0x08000000;
-	u32 address;
+	u8 i = 0;
+
 	while(1)
 	{
-		/*	receive until '\n'	*/
-		UART_voidReceiveUntilByte(UART_UnitNumber_2, str, '\n');
+		/*	download i-th ".hex" chunk	*/
+		Boot_Loader_voidDownloadChunk(i);
 
-		/*	parse	*/
-		if (!Hex_Parser_b8Parse(str, &record))
+		/*	parse whole chunk	*/
+		BootLoader_ChunkParsingResult_t parseResult =
+			Boot_Loader_enumParseLastDownloadedChunk();
+
+		switch(parseResult)
 		{
-			/*	ask for re-send	*/
-			(void)UART_enumSendByte(UART_UnitNumber_2, 'F');
-			continue;
+		/*	if the chunk parsed was the last one, return	*/
+		case BootLoader_ChunkParsingResult_WasLast:
+			return;
+
+		/*	if parsing succeeded, increment 'i' to download the next chunk	*/
+		case BootLoader_ChunkParsingResult_Successful:
+			i++;
+			break;
+
+		/*	if parsing failed, re-download the same chunk (don't increment 'i')	*/
+		case BootLoader_ChunkParsingResult_Failed:
+			break;
 		}
 
-		switch(record.type)
-		{
-		case Hex_Record_Type_Data:
-			/*	flash	*/
-			address = highPartAddress | (u32)record.lowPartAddress;
-			FPEC_voidProgram(address, record.data, record.charCount / 2);
-			if (record.charCount % 2 != 0)
-			{
-				address += (record.charCount / 2) * 2;
-				FPEC_voidProgramHalfWord(
-					address, record.data[record.charCount / 2] | 0xFF00);
-			}
-			break;
-
-		case Hex_Record_Type_HighPartAddress:
-			highPartAddress = (u32)record.data[0] << 16;
-			break;
-
-		case Hex_Record_Type_StartingExecutionAddress:
-			startingExecutionAddress =
-				((u32)record.data[0] << 16) | (u32)record.data[1];
-			/*	store to flash	*/
-			address = FPEC_PAGE_ADDRESS(BOOT_LOADER_SIZE_IN_KB) - 4;
-			FPEC_voidProgramWord(address, startingExecutionAddress);
-			break;
-
-		case Hex_Record_Type_EndOfFile:
-			/*	ack on receiving last record	*/
-			(void)UART_enumSendByte(UART_UnitNumber_2, 'N');
-			/*	little delay before disabling UART	*/
-			Delay_voidBlockingDelayMs(50);
-			/*	disable programming mode	*/
-			FPEC_voidDisableProgrammingMode();
-			/*	lock FPEC	*/
-			FPEC_voidLock();
-			/*	disable used peripherals	*/
-			RCC_voidDisablePeripheralClk(RCC_Bus_AHB, RCC_PERIPHERAL_FLITF);
-			RCC_voidDisablePeripheralClk(RCC_Bus_APB2, RCC_PERIPHERAL_IOPA);
-			RCC_voidDisablePeripheralClk(RCC_Bus_APB2, RCC_PERIPHERAL_AFIO);
-			RCC_voidDisablePeripheralClk(RCC_Bus_APB1, RCC_PERIPHERAL_USART2);
-			/*	return starting execution address	*/
-			return startingExecutionAddress;
-		}
-
-		/*	ask for next record	*/
-		(void)UART_enumSendByte(UART_UnitNumber_2, 'N');
+		/*	wait before downloading next chunk	*/
+		Delay_voidBlockingDelayMs(100);
 	}
+}
+
+void Boot_Loader_voidUpdateVersionNumberOnFlash(void)
+{
+	/*	unlock flash	*/
+	FPEC_voidUnlock();
+
+	/*	enter programming mode	*/
+	FPEC_voidEnableProgrammingMode();
+
+	/*	get address of version number	*/
+	u32 address = FPEC_HALF_WORD_ADDRESS(BOOT_LOADER_SIZE_IN_KB - 1, 509);
+
+	/*	write new version number	*/
+	/**
+	 * Notice that it is  stored negated to result in zero version number if the
+	 * half-word was empty.
+	 **/
+	FPEC_voidProgramHalfWord(address, ~Global_tempOnlineVersionNumber);
+
+	/*	disable programming mode	*/
+	FPEC_voidDisableProgrammingMode();
+
+	/*	lock flash	*/
+	FPEC_voidLock();
 }
 
 u32 Boot_Loader_u32GetStoredStartingExecutionAddress(void)
@@ -174,20 +220,4 @@ u32 Boot_Loader_u32GetStoredStartingExecutionAddress(void)
 	RCC_voidDisablePeripheralClk(RCC_Bus_AHB, RCC_PERIPHERAL_FLITF);
 
 	return address;
-}
-
-/*
- * gives host flasher time to enter programming key, disables sysTick on exit.
- */
-b8 Boot_Loader_b8GiveChanceToUnlock(u16 msTimeout)
-{
-	char str[50];
-
-	b8 unlocked = UART_b8ReceiveStringTimeout(
-		UART_UnitNumber_2, str, msTimeout, KEY_STRING);
-
-	STK_voidStopTickMeasure(STK_TickMeasureType_OverflowCount);
-	STK_voidDisableSysTick();
-
-	return unlocked;
 }
