@@ -4,4 +4,5 @@ Configurable UART boot loader for STM32
 This project gives the ability of programming STM32 using UART interface.
 
 # Flash Over The Air (FOTA):
-Soon will add TCP flashing using esp8266 to connect to the internet over WiFi.
+Added ability of connecting to FTP server, checking if update is available, downloading nad flashing updates.
+(uses esp8266 as WiFi module)
