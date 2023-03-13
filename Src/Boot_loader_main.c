@@ -46,6 +46,9 @@ int main(void)
 			 * stored.
 			 */
 			Boot_Loader_voidUpdateVersionNumberOnFlash();
+
+			/*	end bootloader	*/
+			Boot_Loader_voidFreeMem();
 		}
 	}
 
@@ -57,8 +60,8 @@ int main(void)
 		0x08000000 + 1024 * BOOT_LOADER_SIZE_IN_KB, SCB_VTOR_Code);
 
 	/*	start APP code	*/
-	vvFunc_t start = *(vvFunc_t*)(0x08000004 + 1024 * BOOT_LOADER_SIZE_IN_KB);
-	//vvFunc_t start = *(vvFunc_t*)Boot_Loader_u32GetStoredStartingExecutionAddress();
+	//vvFunc_t start = *(vvFunc_t*)(0x08000004 + 1024 * BOOT_LOADER_SIZE_IN_KB);
+	vvFunc_t start = *(vvFunc_t*)Boot_Loader_u32GetStoredStartingExecutionAddress();
 
 	start();
 

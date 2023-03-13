@@ -25,6 +25,8 @@ b8 Boot_Loader_b8GetVersionAvailableOnline(void);
 
 u16 Boot_Loader_u16GetVersionAvailableOnFlash(void);
 
+b8 Boot_Loader_b8RestartFtpConnection(void);
+
 /*
  * Downloads i-th chuck to esp8266's buffer.
  *

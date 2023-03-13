@@ -32,7 +32,7 @@
 #include "Boot_Loader_private.h"
 
 
-extern WiFi_t esp8266;
+extern WiFi_t* esp8266Ptr;
 extern u16 Global_tempOnlineVersionNumber;
 
 
@@ -40,7 +40,7 @@ b8 Boot_Loader_b8GetVersionAvailableOnline(void)
 {
 	/*	check connection to server	*/
 	WiFi_Status_t s;
-	WiFi_b8GetStatus(&esp8266, &s);
+	WiFi_b8GetStatus(esp8266Ptr, &s);
 
 	/*	if server was not connected, reconnect	*/
 	if (!s.link[0].isUsed)
@@ -48,7 +48,7 @@ b8 Boot_Loader_b8GetVersionAvailableOnline(void)
 		/*	try connection	*/
 		b8 connected =
 			WiFi_b8ConnectToFTP(
-				&esp8266, FTP_IP, FTP_PORT, FTP_USER, FTP_PASS, 0);
+				esp8266Ptr, FTP_IP, FTP_PORT, FTP_USER, FTP_PASS, 0);
 
 		/*	if can't connect	*/
 		if (!connected)
@@ -58,14 +58,14 @@ b8 Boot_Loader_b8GetVersionAvailableOnline(void)
 	/*	download content of "ver.txt"	*/
 	b8 downloaded =
 		WiFi_b8DownloadSmallFtpFile(
-			&esp8266, 0, 1, WiFi_FtpFile_Ascii, "ver.txt");
+			esp8266Ptr, 0, 1, WiFi_FtpFile_Ascii, "ver.txt");
 
 	/*	if could not download	*/
 	if (!downloaded)
 		return false;
 
 	/*	if connect, and download done successfully	*/
-	Global_tempOnlineVersionNumber = atoi(esp8266.buffer);
+	Global_tempOnlineVersionNumber = atoi(esp8266Ptr->buffer);
 
 	return true;
 }
@@ -97,6 +97,26 @@ u16 Boot_Loader_u16GetVersionAvailableOnFlash(void)
 	return ver;
 }
 
+b8 Boot_Loader_b8RestartFtpConnection(void)
+{
+	/*	close connections on link1 & link2	*/
+	b8 disconnected0 = WiFi_b8CloseConnection(esp8266Ptr, 0);
+	b8 disconnected1 = WiFi_b8CloseConnection(esp8266Ptr, 1);
+
+	if (!disconnected0 || !disconnected1)
+		return false;
+
+	/*	connect to FTP server again	*/
+	b8 connectedFtp =
+		WiFi_b8ConnectToFTP(esp8266Ptr, FTP_IP, FTP_PORT, FTP_USER, FTP_PASS, 0);
+
+	if (connectedFtp)
+		return true;
+
+	else
+		return false;
+}
+
 void Boot_Loader_voidDownloadChunk(u8 chunkIndex)
 {
 	/*	create string of file name	*/
@@ -109,14 +129,46 @@ void Boot_Loader_voidDownloadChunk(u8 chunkIndex)
 	{
 		b8 downloadSuccessful =
 			WiFi_b8DownloadSmallFtpFile(
-				&esp8266, 0, 1, WiFi_FtpFile_Binary, fileNameStr);
+				esp8266Ptr, 0, 1, WiFi_FtpFile_Binary, fileNameStr);
 
-		/*
-		 * if file could not be downloaded, restart FTP connection.
-		 */
+		/**
+		 * if file could not be downloaded, execute these fixing operation in sequence:
+		 *		-	Re-download the file.
+		 * 		-	restart FTP connection.
+		 * 		-	restart the whole esp8266.
+		 **/
+
 		if (!downloadSuccessful)
 		{
 			while(!Boot_Loader_b8ConnectToFtpServer());
+			continue;
+
+
+			/*	try re-downloading	*/
+			downloadSuccessful =
+				WiFi_b8DownloadSmallFtpFile(
+					esp8266Ptr, 0, 1, WiFi_FtpFile_Binary, fileNameStr);
+
+			/*	if didn't work	*/
+			if (!downloadSuccessful)
+			{
+				/*	try disconnecting, and re-connecting to the FTP server	*/
+				b8 connectedToFtpServer = Boot_Loader_b8RestartFtpConnection();
+
+				/*
+				 * if didn't work, try restarting the whole esp8266 and connecting
+				 * to the FTP server. this time, keep trying until connected.
+				 * (see comment of this function to understand why).
+				 */
+				if (!connectedToFtpServer)
+				{
+					while(!Boot_Loader_b8ConnectToFtpServer());
+				}
+			}
+
+			/*	otherwise if downloaded successfully, return	*/
+			else
+				return;
 		}
 
 		/*	otherwise if downloaded successfully, return	*/
@@ -140,7 +192,7 @@ BootLoader_ChunkParsingResult_t Boot_Loader_enumParseLastDownloadedChunk(void)
 		 * find starting index of the record (first ':' after the last index).
 		 */
 		recordStartingIndex =
-			String_s16Find(esp8266.buffer, ':', recordStartingIndex);
+			String_s16Find(esp8266Ptr->buffer, ':', recordStartingIndex);
 
 		/*	if there's no next record, chunk is ended	*/
 		if (recordStartingIndex == -1)
@@ -150,7 +202,7 @@ BootLoader_ChunkParsingResult_t Boot_Loader_enumParseLastDownloadedChunk(void)
 		Hex_Record_t record;
 
 		b8 recordParsedSuccessfully =
-			Hex_Parser_b8Parse(&esp8266.buffer[recordStartingIndex], &record);
+			Hex_Parser_b8Parse(&(esp8266Ptr->buffer[recordStartingIndex]), &record);
 
 		/*	if record could not be parsed	*/
 		if (!recordParsedSuccessfully)
@@ -197,6 +249,7 @@ BootLoader_ChunkParsingResult_t Boot_Loader_enumParseLastDownloadedChunk(void)
 			 */
 			address = FPEC_PAGE_ADDRESS(BOOT_LOADER_SIZE_IN_KB) - 4;
 
+			/// TODO: this has to use the copy - erase - copy method!
 			FPEC_voidProgramWord(address, executionStartingAddress);
 
 			break;

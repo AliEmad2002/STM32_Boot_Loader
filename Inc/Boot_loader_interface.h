@@ -48,5 +48,8 @@ void Boot_Loader_voidUpdateVersionNumberOnFlash(void);
 
 u32 Boot_Loader_u32GetStoredStartingExecutionAddress(void);
 
+/*	frees dynamically allocated memory used in bootloader	*/
+void Boot_Loader_voidFreeMem(void);
+
 
 #endif /* _BOOT_LOADER_INTERFACE_H_ */

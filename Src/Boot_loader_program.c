@@ -11,6 +11,7 @@
 #include "Hex_Parser.h"
 #include "Delay_interface.h"
 #include "Error_Handler_interface.h"
+#include <stdlib.h>
 
 /*	MCAL	*/
 #include "RCC_interface.h"
@@ -28,7 +29,7 @@
 #include "Boot_Loader_config.h"
 #include "Boot_Loader_private.h"
 
-WiFi_t esp8266;
+WiFi_t* esp8266Ptr;
 
 /*
  * After getting new version number from server, it can't be immediately stored
@@ -58,34 +59,44 @@ void Boot_Loader_voidInit(void)
 	STK_voidStartTickMeasure(STK_TickMeasureType_OverflowCount);
 
 	/*	init WiFi module	*/
+	/**
+	 * As the WiFi module uses large buffer space, allocating its object dynamically
+	 * and free-ing it at end of the bootloader would save RAM space for the application
+	 * program.
+	 *
+	 * "They" say: "don't use dynamic allocation in embedded systems!"... get
+	 * a solid "why" about that topic. TODO
+	 **/
+	esp8266Ptr = malloc(sizeof(WiFi_t));
+
 	WiFi_voidInit(
-		&esp8266, ESP8266_RST_PIN, ESP8266_UART_UNIT_NUMBER,
+		esp8266Ptr, ESP8266_RST_PIN, ESP8266_UART_UNIT_NUMBER,
 		115200, ESP8266_UART_AFIO_MAP);
 }
 
 b8 Boot_Loader_b8ConnectToFtpServer(void)
 {
 	/*	wait for module to be ready	*/
-	while(!WiFi_b8IsModuleAvailable(&esp8266));
+	while(!WiFi_b8IsModuleAvailable(esp8266Ptr));
 
 	Delay_voidBlockingDelayMs(2);	//	Avoiding "non-valid echo" problem.
 
 	/*	reset module	*/
-	while(!WiFi_b8SoftReset(&esp8266));
+	while(!WiFi_b8SoftReset(esp8266Ptr));
 
 	Delay_voidBlockingDelayMs(500);	//	Avoiding "non-valid echo" problem.
 
 	/*	connect to WiFi network	*/
-	while(!WiFi_b8SelectMode(&esp8266, WiFi_Mode_SoftAP_Station, true));
+	while(!WiFi_b8SelectMode(esp8266Ptr, WiFi_Mode_SoftAP_Station, true));
 
 	Delay_voidBlockingDelayMs(2);	//	Avoiding "non-valid echo" problem.
 
-	while(!WiFi_b8ConnectToAP(&esp8266, WIFI_SSID, WIFI_PASS, true));
+	while(!WiFi_b8ConnectToAP(esp8266Ptr, WIFI_SSID, WIFI_PASS, true));
 
 	Delay_voidBlockingDelayMs(100);	//	Avoiding "non-valid echo" problem.
 
 	/*	enable multiple connections	*/
-	while(!WiFi_b8SetMultipleConnections(&esp8266, true));
+	while(!WiFi_b8SetMultipleConnections(esp8266Ptr, true));
 
 	Delay_voidBlockingDelayMs(2);
 
@@ -93,7 +104,7 @@ b8 Boot_Loader_b8ConnectToFtpServer(void)
 
 	/*	connect to FTP server	*/
 	commandSuccess =
-		WiFi_b8ConnectToFTP(&esp8266, FTP_IP, FTP_PORT, FTP_USER, FTP_PASS, 0);
+		WiFi_b8ConnectToFTP(esp8266Ptr, FTP_IP, FTP_PORT, FTP_USER, FTP_PASS, 0);
 
 	if (!commandSuccess)
 		return false;
@@ -175,21 +186,49 @@ void Boot_Loader_voidUpdateVersionNumberOnFlash(void)
 	/*	unlock flash	*/
 	FPEC_voidUnlock();
 
-	/*	enter programming mode	*/
+	/*	copy last page to RAM	*/
 	FPEC_voidEnableProgrammingMode();
 
-	/*	get address of version number	*/
-	u32 address = FPEC_HALF_WORD_ADDRESS(BOOT_LOADER_SIZE_IN_KB - 1, 509);
+	/// TODO: dynamic here is used!
+	u16* lastPagePtr = malloc(2 * 1024 * sizeof(u16));
 
-	/*	write new version number	*/
+	for (u16 i = 0; i < 2 * 1024; i++)
+	{
+		lastPagePtr[i] =
+			FPEC_u32ReadWord(
+				FPEC_HALF_WORD_ADDRESS(BOOT_LOADER_SIZE_IN_KB - 1, i));
+	}
+
+	FPEC_voidDisableProgrammingMode();
+
+	/*	erase last page on flash	*/
+	FPEC_voidEnablePageEraseMode();
+
+	FPEC_voidErasePage(BOOT_LOADER_SIZE_IN_KB - 1);
+
+	FPEC_voidDisablePageEraseMode();
+
+	/*	write new version number to the page stored on RAM	*/
 	/**
 	 * Notice that it is  stored negated to result in zero version number if the
 	 * half-word was empty.
 	 **/
-	FPEC_voidProgramHalfWord(address, ~Global_tempOnlineVersionNumber);
+	lastPagePtr[509] = ~Global_tempOnlineVersionNumber;
 
-	/*	disable programming mode	*/
+	/*	write the page stored on RAM to flash	*/
+	FPEC_voidEnableProgrammingMode();
+
+	for (u16 i = 0; i < 2 * 1024; i++)
+	{
+		FPEC_voidProgramHalfWord(
+			FPEC_HALF_WORD_ADDRESS(BOOT_LOADER_SIZE_IN_KB - 1, i),
+			lastPagePtr[i]);
+	}
+
 	FPEC_voidDisableProgrammingMode();
+
+	/*	delete page stored on RAM	*/
+	free(lastPagePtr);
 
 	/*	lock flash	*/
 	FPEC_voidLock();
@@ -220,4 +259,9 @@ u32 Boot_Loader_u32GetStoredStartingExecutionAddress(void)
 	RCC_voidDisablePeripheralClk(RCC_Bus_AHB, RCC_PERIPHERAL_FLITF);
 
 	return address;
+}
+
+void Boot_Loader_voidFreeMem(void)
+{
+	free(esp8266Ptr);
 }
