@@ -1,25 +1,32 @@
 /*
- * Boot_loader_main.c
+ * main.c
  *
- * Created: 		26 Oct 2022
+ * Created: 		24 Oct 2023
  * Author:			Ali Emad.
  */
 
 /*	LIB	*/
 #include <stdint.h>
 
-/*	MCAL	*/
-
-/*	APP	*/
-//#include "Boot_loader_interface.h"
-//#include "Boot_Loader_config.h"
-//#include "Boot_Loader_private.h"
+/*	BL	*/
+#include "BL.h"
 
 
 int main(void)
 {
-//	/*	init boot loader	*/
-//	Boot_Loader_voidInit();
+	/*	Initialize boot loader startup	*/
+	vBL_Init_Startup();
+
+	/*	Check programming mode enable pin	*/
+	if (ucBL_IS_PROGRAMMING_MODE_ENABLED())
+	{
+		/*	Initialize programming mode	*/
+		vBL_Init_Programming();
+	}
+
+
+
+
 //
 //	/*	send start of connection ack to the flasher	*/
 //	UART_enumSendByte(UART_UnitNumber_2, 'S');
@@ -50,3 +57,17 @@ int main(void)
 //
 //	return 0;
 }
+
+/*******************************************************************************
+ * Callbacks:
+ ******************************************************************************/
+void Error_Handler(void)
+{
+	while(1);
+}
+
+
+
+
+
+

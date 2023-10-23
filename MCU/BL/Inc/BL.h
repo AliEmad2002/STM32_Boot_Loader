@@ -14,10 +14,15 @@
  *	-	Same as the above is added for flash controller (FPEC).
  *
  *	-	Start-up code should not be compiled within the user app, too.
+ *
+ *	-	When compiling, it's recommended to set optimization for size.
  */
 
 #ifndef BL_H_
 #define BL_H_
+
+
+#include "BL_config.h"
 
 #include "DIO.h"
 
@@ -29,6 +34,7 @@ void vBL_Init_Startup(void);
 
 /*
  * Initializes bootloader's programming needed recourses:
+ * 		-	Clock configuration (Could be edited in the port folder).
  * 		-	USB virtual COM port.
  * 		-	CPU-Flash interface.
  */

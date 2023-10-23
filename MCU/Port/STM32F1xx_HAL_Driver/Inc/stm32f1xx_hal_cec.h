@@ -92,7 +92,7 @@ typedef struct
   *             0  : Reset (peripheral not initialized)
   *             1  : Init done (peripheral initialized)
   *          b4-b2  (not used)
-  *            xxx : Should be set to 000
+  *            xx : Should be set to 000
   *          b1     Rx state
   *             0  : Ready (no Rx operation ongoing)
   *             1  : Busy (Rx operation ongoing)

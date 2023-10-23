@@ -17,7 +17,7 @@
  * 			should be pulled down externally.
  */
 #define confPROGRAMMING_MODE_EN_PORT	1
-#define confPROGRAMMING_MODE_EN_PORT	2
+#define confPROGRAMMING_MODE_EN_PIN		2
 
 
 
