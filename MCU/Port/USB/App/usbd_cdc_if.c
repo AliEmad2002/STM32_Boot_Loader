@@ -23,6 +23,9 @@
 
 /* USER CODE BEGIN INCLUDE */
 extern uint32_t UserRxBufferFSLen;
+extern uint32_t UserRxBufferFSAlreadyReadLen = 0;
+extern uint8_t UserRxBufferFSOREFlag = 0;
+
 /* USER CODE END INCLUDE */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -90,6 +93,8 @@ extern uint32_t UserRxBufferFSLen;
 /** Received data over USB are stored in this buffer      */
 uint8_t UserRxBufferFS[APP_RX_DATA_SIZE];
 uint32_t UserRxBufferFSLen = 0;
+uint32_t UserRxBufferFSAlreadyReadLen = 0;
+uint8_t UserRxBufferFSOREFlag = 0;
 
 /** Data to send over USB CDC are stored in this buffer   */
 uint8_t UserTxBufferFS[APP_TX_DATA_SIZE];
@@ -259,12 +264,22 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
   */
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
-  /* USER CODE BEGIN 6 */
-  USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
-  USBD_CDC_ReceivePacket(&hUsbDeviceFS);
-  UserRxBufferFSLen = (uint8_t) * Len;
-  return (USBD_OK);
-  /* USER CODE END 6 */
+	/* USER CODE BEGIN 6 */
+
+	/*	Copy received frame to the buffer	*/
+	USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
+	USBD_CDC_ReceivePacket(&hUsbDeviceFS);
+
+	/*	Check for overrun error	*/
+	if (UserRxBufferFSAlreadyReadLen < UserRxBufferFSLen)
+		UserRxBufferFSOREFlag = 1;
+
+	/*	Update len	*/
+	UserRxBufferFSLen = *Len;
+	UserRxBufferFSAlreadyReadLen = 0;
+
+	return (USBD_OK);
+	/* USER CODE END 6 */
 }
 
 /**

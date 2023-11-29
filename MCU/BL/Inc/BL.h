@@ -16,6 +16,10 @@
  *	-	Start-up code should not be compiled within the user app, too.
  *
  *	-	When compiling, it's recommended to set optimization for size.
+ *
+ *	-	Please consider that USB SW libraries consume - most often - large code size.
+ *		Hence, if the application does not make use of the USB functions later, then
+ *		another version of the bootloader (relying on UART for example) is recommended.
  */
 
 #ifndef BL_H_
@@ -30,7 +34,7 @@
  * Initializes bootloader's startup needed recourses:
  * 		-	Programming mode enable pin.
  */
-void vBL_Init_Startup(void);
+void vBL_initStartup(void);
 
 /*
  * Initializes bootloader's programming needed recourses:
@@ -38,17 +42,17 @@ void vBL_Init_Startup(void);
  * 		-	USB virtual COM port.
  * 		-	CPU-Flash interface.
  */
-void vBL_Init_Programming(void);
+void vBL_initProgramming(void);
 
 /*
- * Enables FPEC, erases all pages except for the boot-loader section, receives, checks,
- * parses and flashes data into flash memory.
+ * Erases all pages except for the boot-loader section, receives, checks, parses
+ * and flashes data into flash memory.
  *
  * Returns starting execution address.
  */
-uint32_t uiBL_EnterProgrammingMode(void);
+uint32_t uiBL_receiveProgram(void);
 
-uint32_t uiBL_GetStoredStartingExecutionAddress(void);
+uint32_t uiBL_getStoredStartingExecutionAddress(void);
 
 /*
  * Checks whether programming mode is enabled or not.

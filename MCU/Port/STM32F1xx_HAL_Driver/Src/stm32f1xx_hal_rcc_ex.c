@@ -132,10 +132,10 @@ HAL_StatusTypeDef HAL_RCCEx_PeriphCLKConfig(RCC_PeriphCLKInitTypeDef  *PeriphClk
 
       while (HAL_IS_BIT_CLR(PWR->CR, PWR_CR_DBP))
       {
-        if ((HAL_GetTick() - tickstart) > RCC_DBP_TIMEOUT_VALUE)
-        {
-          return HAL_TIMEOUT;
-        }
+//        if ((HAL_GetTick() - tickstart) > RCC_DBP_TIMEOUT_VALUE)
+//        {
+//          return HAL_TIMEOUT;
+//        }
       }
     }
 
@@ -160,10 +160,10 @@ HAL_StatusTypeDef HAL_RCCEx_PeriphCLKConfig(RCC_PeriphCLKInitTypeDef  *PeriphClk
         /* Wait till LSE is ready */
         while (__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) == RESET)
         {
-          if ((HAL_GetTick() - tickstart) > RCC_LSE_TIMEOUT_VALUE)
-          {
-            return HAL_TIMEOUT;
-          }
+//          if ((HAL_GetTick() - tickstart) > RCC_LSE_TIMEOUT_VALUE)
+//          {
+//            return HAL_TIMEOUT;
+//          }
         }
       }
     }

@@ -24,8 +24,7 @@ int main(void)
 		vBL_Init_Programming();
 	}
 
-
-
+	while(1);
 
 //
 //	/*	send start of connection ack to the flasher	*/

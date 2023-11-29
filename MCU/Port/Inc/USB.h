@@ -21,6 +21,33 @@
 
 #include "Assert.h"
 
+
+/*******************************************************************************
+ * Externs from USB library:
+ ******************************************************************************/
+extern uint8_t UserRxBufferFS[];
+extern uint32_t UserRxBufferFSLen;
+extern uint32_t UserRxBufferFSAlreadyReadLen;
+extern uint8_t UserRxBufferFSOREFlag;
+
+/*******************************************************************************
+ * Rx buffer parameters:
+ ******************************************************************************/
+uint8_t* pcRxBuffer = ;
+uint32_t UserRxBufferFSLen = 0;
+uint32_t UserRxBufferFSAlreadyReadLen = 0;
+uint8_t UserRxBufferFSOREFlag = 0;
+
+
+
+
+
+
+
+
+
+
+
 extern USBD_HandleTypeDef hUsbDeviceFS;
 
 /*
@@ -30,20 +57,24 @@ extern uint8_t* pucPortUsbRxBuffer;
 extern uint32_t* puiPortUsbRxBufferLen;
 
 
-static inline void vPort_USB_initHardware(void)
-{
-	vLib_ASSERT(USBD_Init(&hUsbDeviceFS, &FS_Desc, DEVICE_FS) == USBD_OK, 0);
-	vLib_ASSERT(USBD_RegisterClass(&hUsbDeviceFS, &USBD_CDC) == USBD_OK, 0);
-	vLib_ASSERT(USBD_CDC_RegisterInterface(&hUsbDeviceFS, &USBD_Interface_fops_FS) == USBD_OK, 0);
-	vLib_ASSERT(USBD_Start(&hUsbDeviceFS) == USBD_OK, 0);
-}
+/*
+ * Initializes USB hardware.
+ */
+void vPort_USB_initHardware(void);
 
-static inline uint8_t ucPort_USB_send(uint8_t* pucBuffer, uint16_t usLen)
-{
-	return (CDC_Transmit_FS(pucBuffer, usLen) == USBD_OK);
-}
+/*
+ * Start a transmission operation.
+ * Returns 1 if operation started successfully. Otherwise it returns 0. (For example
+ * if previously initiated transmission has not yet ended.
+ */
+uint8_t ucPort_USB_send(uint8_t* pucBuffer, uint16_t usLen);
 
+/*
+ * Checks if the Rx buffer has new data.
+ */
+uint8_t ucPort_USB_isRxne(void);
 
+uint8_t ucPort_USB_receive_line(uint8_t* pucBuffer, uint16_t usMaxLen);
 
 
 #endif /* PORT_USB_H_ */

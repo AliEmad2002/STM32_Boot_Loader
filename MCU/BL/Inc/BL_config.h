@@ -24,7 +24,7 @@
 
 #define KEY_STRING		"ivC4WfVHnMU!0g3a"
 
-#define MAX_STR_LEN			60
+#define MAX_BUFFER_SIZE			128
 
 
 #endif /* BL_CONFIG_H_ */

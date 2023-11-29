@@ -19,6 +19,8 @@
 #include "stm32f103xb.h"
 #include "stm32f1xx_hal.h"
 
+#include "BL_config.h"
+
 /*
  * Driver-long needed values.
  *
@@ -105,5 +107,23 @@ void vPort_DIO_initPinOutput(uint8_t ucPortNumber, uint8_t ucPinNumber);
  */
 #define uiPORT_DIO_READ_PORT(ucPortNumber)	\
 	(	pxPortDioPortArr[(ucPortNumber)]->IDR	)
+
+/*
+ * Initializes programming enable pin and all of its dependencies.
+ */
+static inline void vPort_DIO_initProgrammingEnablePin(void)
+{
+	/*	Enable GPIO port clock	*/
+	__HAL_RCC_GPIOB_CLK_ENABLE();
+
+	/*	Initialize programming mode enable pin as pulled down input	*/
+	/*
+	 * Notice: when using the STM32F103C8T6 based blue-pill board, PB2 pin can
+	 * not be pulled-down.
+	 */
+	vPort_DIO_initPinInput(	confPROGRAMMING_MODE_EN_PORT,
+							confPROGRAMMING_MODE_EN_PIN,
+							0	);
+}
 
 #endif /* PORT_DIO_H_ */
